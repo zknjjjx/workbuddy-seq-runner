@@ -1,0 +1,60 @@
+<!--
+  Sequential ledger panel fragment -- for hub's EXISTING dashboard.
+
+  This is NOT a standalone page and NOT a replacement dashboard.html.
+  It is a section to be added inside hub's existing "tasks" tab, next
+  to the scheduler bar, plus the small fetch/render script below.
+  See panel_patch.md for the exact insertion points and the three
+  panel endpoints the hub side must expose:
+    GET  /seq-ledger            -> ledger.panel_json()
+    GET  /seq-ledger?uid=<uid>  -> that account's recent runs
+    POST /seq-ledger/trigger    -> optional manual trigger (guarded
+                                  the same way as /scheduler/trigger)
+
+  It reuses hub panel conventions (getJSON/postJSON helpers and the
+  .gw-summary table style) so it does not invent a second UI system.
+  UIDs are shown masked (see ledger.mask_uid); full tokens are never
+  rendered here.
+-->
+<div id="seqLedgerSection" class="gw-summary">
+  <h3>顺序账本 · 凌晨按号跑任务</h3>
+  <p id="seqLedgerHint">主队列凌晨按号顺序跑完，失败的号同一天清晨补跑一次；跑任务与消费积分互不干扰。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>账号</th><th>区域</th><th>上次状态</th><th>上次余额</th>
+        <th>连续失败</th><th>待次日确认</th><th>下一步</th>
+      </tr>
+    </thead>
+    <tbody id="seqLedgerBody">
+      <tr><td colspan="7">加载中…</td></tr>
+    </tbody>
+  </table>
+  <div id="seqLedgerRecent"></div>
+</div>
+<script>
+async function renderSeqLedger() {
+  const body = document.getElementById('seqLedgerBody');
+  const recent = document.getElementById('seqLedgerRecent');
+  if (!body) return;
+  try {
+    const r = await getJSON('/seq-ledger');
+    const accounts = r.accounts || [];
+    body.innerHTML = accounts.length ? accounts.map(a =>
+      '<tr><td>' + (a.display || a.account_uid) + '</td><td>' + (a.realm || '') +
+      '</td><td>' + (a.last_status || '') + ' / ' + (a.last_phase || '') +
+      '</td><td>' + (a.last_balance == null ? '—' : a.last_balance) +
+      '</td><td>' + (a.consecutive_failures || 0) +
+      '</td><td>' + (a.pending_confirmation ? '是' : '否') +
+      '</td><td>' + (a.next_action || '') + '</td></tr>').join('')
+      : '<tr><td colspan="7">暂无账本记录</td></tr>';
+    recent.innerHTML = '<h4>最近流水</h4><pre>' +
+      (r.recent || []).slice(-20).map(x =>
+        [x.date, x.phase, x.attempt, x.display, x.status,
+         x.error_code || '', 'delta=' + (x.delta == null ? '—' : x.delta)
+        ].join(' ')).join('\n') + '</pre>';
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="7">账本接口未接通（/seq-ledger）</td></tr>';
+  }
+}
+</script>
